@@ -137,9 +137,20 @@ void Stake::StakeRequest(uint64_t addr,
           out->verbose(CALL_INFO, 8, 0,
                        "Issuing ATOMIC request for address %" PRIu64 "\n", addr );
         }else if( Custom ){
-          req = new MemoryOpRequest( addr, reqLength, READ );
-          out->verbose(CALL_INFO, 8, 0,
-                       "Issuing CUSTOM request for address %" PRIu64 "\n", addr );
+          // decode the incoming xBGAS request structure
+          uint32_t ReqCode = (Code & 0x1);
+          uint32_t Target = (Code>>1);
+          if( ReqCode == 0 ){
+            // load request
+            req = new CustomOpRequest( addr, reqLength, Code );
+            out->verbose(CALL_INFO, 8, 0,
+                         "Issuing CUSTOM READ request for address %" PRIu64 " for TARGET=%" PRIu32 "\n", addr, Target );
+          }else{
+            // store request
+            req = new CustomOpRequest( addr, reqLength, Code );
+            out->verbose(CALL_INFO, 8, 0,
+                         "Issuing CUSTOM WRITE request for address %" PRIu64 " for TARGET=%" PRIu32 "\n", addr, Target );
+          }
         }else{
           out->fatal(CALL_INFO, -1, "Unkown request type" );
         }
