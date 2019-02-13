@@ -117,7 +117,9 @@ libmemHierarchy_la_SOURCES = \
 	Sieve/broadcastShim.h \
 	Sieve/broadcastShim.cc \
 	memNetBridge.h \
-	memNetBridge.cc
+	memNetBridge.cc \
+	olb.h \
+	olb.cc
 
 EXTRA_DIST = \
         Sieve/tests/StatisticOutput.csv.gold \
