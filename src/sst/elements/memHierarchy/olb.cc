@@ -14,16 +14,22 @@
 // distribution.
 
 #include <sst_config.h>
+#include <algorithm>
 #include "sst/elements/memHierarchy/olb.h"
 
 #include <sst/core/simulation.h>
 
-using namespace SST:
+using namespace SST;
 using namespace SST::MemHierarchy;
-using namespace SST::Interfaces::SimpleNetwork;
+using SST::Interfaces::SimpleNetwork;
+//using SST::BaseComponent;
+using namespace SST::Statistics;
 
-OLB::OLB(SST::Component *comp, SST::Params &params)
-  : SST::Component(comp,params), MemNICBase(parent, params){
+OLB::OLB(SST::ComponentId_t id, SST::Params &params)
+  : SST::Component(id), MemNICBase(parent, params){
+  //: SST::Component(comp->getId()), MemNICBase(parent, params){
+//OLB::OLB(SST::Component *comp, SST::Params &params)
+  //: SST::Component(comp,params), MemNICBase(parent, params){
 
   // setup initial values
   clockOn = false;
@@ -41,18 +47,18 @@ OLB::OLB(SST::Component *comp, SST::Params &params)
     distro = OLB_RANDOM;
   }else{
     distro = OLB_UNK;
-    dbg->fatal(CALL_INFO,-1,"Unknown mapping parameter type.\n",
-              mapping.c_str() );
+    dbg->fatal(CALL_INFO,-1,"Unknown mapping parameter type.\n");
+              //mapping.c_str() );
   }
 
   dbg->verbose(CALL_INFO, 1, 0, "Initializing mapping table...\n" );
   if( !initMappingTable() ){
-    dbg->fatal(CALL_INFO,-1,"Failed to initialize to logical to physical PE maps\n")
+    dbg->fatal(CALL_INFO,-1,"Failed to initialize to logical to physical PE maps\n");
   }
 
   dbg->verbose(CALL_INFO, 1, 0, "Initializing the link infrastructure...\n" );
   if( !configureLinks(params) ){
-    dbg->fatal(CALL_INFO,-1,"Failed to initialize to link infrastructure\n")
+    dbg->fatal(CALL_INFO,-1,"Failed to initialize to link infrastructure\n");
   }
 
   // init the tag cache
@@ -62,10 +68,10 @@ OLB::OLB(SST::Component *comp, SST::Params &params)
   }
 
   // setup the clock
-  dbg->verbose(CALL_INGO, 1, 0, "Initializing the OLB clock...\n" );
+  dbg->verbose(CALL_INFO, 1, 0, "Initializing the OLB clock...\n" );
   createClock(params);
 
-  dbg->verbose(CALL_INGO, 1, 0, "Registering the OLB statistics data...\n" );
+  dbg->verbose(CALL_INFO, 1, 0, "Registering the OLB statistics data...\n" );
   registerStatData();
 }
 
@@ -75,13 +81,13 @@ OLB::~OLB(){
 }
 
 void OLB::registerStatData(){
-  statTotalOps    = registerStatistic<uint64_t>("TotalOps");
-  statTotalRead   = registerStatistic<uint64_t>("TotalRead");
-  statTotalWrite  = registerStatistic<uint64_t>("TotalWrite");
-  statExtRead     = registerStatistic<uint64_t>("ExtRead");
-  statExtWrite    = regsiterStatistic<uint64_t>("ExtWrite");
-  statLocalRead   = registerStatistic<uint64_t>("LocalRead");
-  statLocalWrite  = registerStatistic<uint64_t>("LocalWrite");
+  statTotalOps    = Component::registerStatistic<uint64_t>("TotalOps");
+  statTotalRead   = Component::registerStatistic<uint64_t>("TotalRead");
+  statTotalWrite  = Component::registerStatistic<uint64_t>("TotalWrite");
+  statExtRead     = Component::registerStatistic<uint64_t>("ExtRead");
+  statExtWrite    = Component::registerStatistic<uint64_t>("ExtWrite");
+  statLocalRead   = Component::registerStatistic<uint64_t>("LocalRead");
+  statLocalWrite  = Component::registerStatistic<uint64_t>("LocalWrite");
 }
 
 // OLB::configureLinks
@@ -99,24 +105,25 @@ bool OLB::configureLinks(Params &params){
   bool isLowNet   = false;        // low_network_0 is connected to the local cache/memory hierarchy
   bool isBgasNet  = false;        // bgas_network_0 is connected to the external network interface
   bool isCache    = false;        // cache is connected
+  bool found = false;
 
   // check for the network definitions
-  isHighNet = isPortConnected("high_network_0");
-  isLowNet  = isPortConnected("low_network_0");
-  isCache   = isPortConnected("cache");
+  isHighNet = Component::isPortConnected("high_network_0");
+  isLowNet  = Component::isPortConnected("low_network_0");
+  isCache   = Component::isPortConnected("cache");
 
   // check for the valid port combos
   if( isHighNet ){
-    if( !lsLowNet && !isCache ){
+    if( !isLowNet && !isCache ){
       dbg->fatal(CALL_INFO,-1,
                  "%s, Error: no connected low ports detected. Please connect one of 'cache' or connect N components to 'low_network_n' where n is in the range 0 to N-1\n",
-                 getName().c_str());
+                 Component::getName().c_str());
     }
   }else{
     // no high network connected
     dbg->fatal(CALL_INFO,-1,
                "%s, Error: no high network connected to the CPU: 'high_network_0'\n",
-               getName().c_str() );
+               Component::getName().c_str() );
   }
 
   // configure the bgas network
@@ -124,14 +131,14 @@ bool OLB::configureLinks(Params &params){
   if( linkName.length() == 0 ){
     dbg->fatal(CALL_INFO,-1,
                "%s, Error: no BGAS network connected to OLB: 'bgas_network_0'\n",
-               getName().c_str() );
+               Component::getName().c_str() );
   }
   std::string linkBW = params.find<std::string>("network_bw", "80GiB/s");
   int num_vcs = 1;    // only one virtual channel for now
   std::string linkInbufSize = params.find<std::string>("network_input_buffer_size", "1KiB");
   std::string linkOutbufSize = params.find<std::string>("network_output_buffer_size", "1KiB");
 
-  link_control = (SimpleNetwork*)parent->loadSubComponent("merlin.linkcontrol", parent, params);
+  link_control = (SimpleNetwork*)parent->Component::loadSubComponent("merlin.linkcontrol", parent, params);
   if( link_control != nullptr ){
     dbg->debug(_INFO_, "Configuring bgas link_control\n" );
     isBgasNet = true;
@@ -144,7 +151,7 @@ bool OLB::configureLinks(Params &params){
     if( !packetSize.hasUnits("B") ){
       dbg->fatal(CALL_INFO,-1,
                  "%s, Error: Invalid param(%s): min_packet_size - must have units of bytes (B)\n",
-                 getName.c_str(), packetSize.toString.c_str());
+                 Component::getName().c_str(), packetSize.toString().c_str());
     }
     packetHeader = packetSize.getRoundedValue();
 
@@ -153,7 +160,7 @@ bool OLB::configureLinks(Params &params){
   }else{
     dbg->fatal(CALL_INFO,-1,
                "%s, Error: could not initialize the merlin linkcontrol for bgas_network_0\n",
-               getName().c_str() );
+               Component::getName().c_str() );
   }
 
   // derive all the link parameters
@@ -182,11 +189,15 @@ bool OLB::configureLinks(Params &params){
   if( isHighNet && isCache ){
     dbg->debug(_INFO_, "Configuring cache with a direct link above and below\n" );
 
-    linkDown = dynamic_cast<MemLinkBase*>(loadSubComponent("memHierarchy.MemLink", this, memlink));
-    linkDown->setRecvHandler(new Event::Handler<Cache>(this, &Cache::processIncomingEvent));
+    linkDown = dynamic_cast<MemLinkBase*>(Component::loadSubComponent("memHierarchy.MemLink", this, memlink));
+		//FIXME: this pointer points to the OLB object, but not the cache. So, we need a cache pointer initialized with the OLB to configure the links to the local cache
+		//FIXME: Do we need to configure cache in the OLB?
+    //linkDown->setRecvHandler(new Event::Handler<Cache>(this, &Cache::processIncomingEvent));
+    linkDown->setRecvHandler(new Event::Handler<Cache>(local_cache, &Cache::processIncomingEvent));
 
-    linkUp = dynamic_cast<MemLinkBase*>(loadSubComponent("memHierarchy.MemLink", this, cpulink));
-    linkUp->setRecvHandler(new Event::Handler<Cache>(this, &Cache::processIncomingEvent));
+    linkUp = dynamic_cast<MemLinkBase*>(Component::loadSubComponent("memHierarchy.MemLink", this, cpulink));
+    linkUp->setRecvHandler(new Event::Handler<Cache>(local_cache, &Cache::processIncomingEvent));
+    //linkUp->setRecvHandler(new Event::Handler<Cache>(this, &Cache::processIncomingEvent));
 
     clockLink = false;
   }else if( isHighNet && isLowNet ){
@@ -196,7 +207,7 @@ bool OLB::configureLinks(Params &params){
     nicParams.find<std::string>("group", "", found);
     if (!found) nicParams.insert("group", "1");
 
-    if (isPortConnected("cache_ack") && isPortConnected("cache_fwd") && isPortConnected("cache_data")) {
+    if (Component::isPortConnected("cache_ack") && Component::isPortConnected("cache_fwd") && Component::isPortConnected("cache_data")) {
       nicParams.find<std::string>("req.port", "", found);
       if (!found) nicParams.insert("req.port", "cache");
       nicParams.find<std::string>("ack.port", "", found);
@@ -205,18 +216,18 @@ bool OLB::configureLinks(Params &params){
       if (!found) nicParams.insert("fwd.port", "cache_fwd");
       nicParams.find<std::string>("data.port", "", found);
       if (!found) nicParams.insert("data.port", "cache_data");
-      linkDown = dynamic_cast<MemLinkBase*>(loadSubComponent("memHierarchy.MemNICFour", this, nicParams));
+      linkDown = dynamic_cast<MemLinkBase*>(Component::loadSubComponent("memHierarchy.MemNICFour", this, nicParams));
     }else{
       nicParams.find<std::string>("port", "", found);
       if (!found) nicParams.insert("port", "cache");
-      linkDown = dynamic_cast<MemLinkBase*>(loadSubComponent("memHierarchy.MemNIC", this, nicParams));
+      linkDown = dynamic_cast<MemLinkBase*>(Component::loadSubComponent("memHierarchy.MemNIC", this, nicParams));
     }
 
-    linkDown->setRecvHandler(new Event::Handler<Cache>(this, &Cache::processIncomingEvent));
+    linkDown->setRecvHandler(new Event::Handler<Cache>(local_cache, &Cache::processIncomingEvent));
 
     // cpu link
-    linkUp = dynamic_cast<MemLinkBase*>(loadSubComponent("memHierarchy.MemLink", this, cpulink));
-    linkUp->setRecvHandler(new Event::Handler<Cache>(this, &Cache::processIncomingEvent));
+    linkUp = dynamic_cast<MemLinkBase*>(Component::loadSubComponent("memHierarchy.MemLink", this, cpulink));
+    linkUp->setRecvHandler(new Event::Handler<Cache>(local_cache, &Cache::processIncomingEvent));
     clockLink = true;
   }
 
@@ -232,7 +243,7 @@ bool OLB::initMappingTable(){
     return initRandomMappingTable();
     break;
   case OLB_UNK:
-  case default:
+  default:
     return false;
     break;
   }
@@ -266,12 +277,13 @@ bool OLB::initRandomMappingTable(){
 unsigned OLB::LogicalToPhysical(unsigned logical){
   std::map<unsigned,unsigned>::iterator itr;
 
-  for(itr=LToPMap.begin(); it!=LToPMap.end(); ++itr){
+  for(itr=LToPMap.begin(); itr!=LToPMap.end(); ++itr){
     if( itr->first == logical ){
       return itr->second;
     }
   }
-  dbg->fatal(CALL_INFO,-1,"Failed to decode logical id.\n", std::to_string(logical).c_str());
+  //dbg->fatal(CALL_INFO,-1,"Failed to decode logical id.\n", std::to_string(logical).c_str());
+  dbg->fatal(CALL_INFO,-1,"Failed to decode logical id.\n");
 }
 
 // convert the physical cpu number to the logical id
@@ -279,12 +291,13 @@ unsigned OLB::LogicalToPhysical(unsigned logical){
 unsigned OLB::PhysicalToLogical(unsigned physical){
   std::map<unsigned,unsigned>::iterator itr;
 
-  for(itr=LToPMap.begin(); it!=LToPMap.end(); ++itr){
+  for(itr=LToPMap.begin(); itr!=LToPMap.end(); ++itr){
     if( itr->second == physical){
       return itr->first;
     }
   }
-  dbg->fatal(CALL_INFO,-1,"Failed to decode physical id.\n", std::to_string(logical).c_str());
+  //dbg->fatal(CALL_INFO,-1,"Failed to decode physical id.\n", std::to_string(physical).c_str());
+  dbg->fatal(CALL_INFO,-1,"Failed to decode physical id.\n");
 }
 
 void OLB::createClock(Params &params){
@@ -294,11 +307,11 @@ void OLB::createClock(Params &params){
   if( !found ){
     dbg->fatal(CALL_INFO,-1,
               "%s, Param not specified: frequency - OLB frequency\n",
-              getName().c_str() );
+              Component::getName().c_str() );
   }
 
   clockHandler    = new Clock::Handler<OLB>(this,&OLB::clock);
-  defaultTimeBase = registerClock(frequency, clockHandler);
+  defaultTimeBase = Component::registerClock(frequency, clockHandler);
 }
 
 /*
@@ -322,6 +335,10 @@ bool OLB::clock(Cycle_t time){
  */
 void OLB::send(MemEventBase *ev){
   SimpleNetwork::Request *req = new SimpleNetwork::Request();
+	//TODO: filled in the req data
+	//ev = MemHierarchyInterface::createCustomEvent(req);
+	//requests_[ev->getID()] = req;
+	//link_->send(ev);
 }
 
 /*
@@ -330,12 +347,17 @@ void OLB::send(MemEventBase *ev){
  */
 bool OLB::recvNotify(int) {
   MemEventBase *me = recv();
-  if( me ){
+	CustomCmdEvent* cme = static_cast<CustomCmdEvent*>(me);
+  if( cme ){
     // call the receive handler
-    uint32_t Opc = me->getCustomOpc();
+		uint32_t Opc = cme->getOpCode();
+    //uint32_t Opc = me->getCustomOpc();
     unsigned Tag = getTag();
     unsigned Dest = ((unsigned)(Opc)>>1);
-    unsigned RqstSz = me->size;
+    //unsigned RqstSz = me->size;
+		// Do we need payload size of event size?
+    //unsigned RqstSz = me->getEventSize();
+    unsigned RqstSz = cme->getSize();
     if( me->getCmd() == Command::CustomReq ){
       //
       // This is a BGAS request
@@ -344,13 +366,15 @@ bool OLB::recvNotify(int) {
       // a network request.  We initially decode the destination
       // here as the OLB::send function returns void
       //
-      netQueue.push_back(new OLBRqst(Tag,Dest,RqstSz,me,false));
+			//FIXME: Do we need to change the me to the MemEvent or change the Send/Recv/RecvNotify... to receive the obj with MemEvent type?
+      netQueue.push_back(new OLBRqst(Tag,Dest,RqstSz,(MemEvent*)me,false));
       this->send(me);
     }else{
       //
       // This is a normal memory request, process it as normal
       //
-      memQueue.push_back(new OLBRqst(Tag,Dest,RqstSz,me,true));
+      //memQueue.push_back(new OLBRqst(Tag,Dest,RqstSz,me,true));
+      memQueue.push(new OLBRqst(Tag,Dest,RqstSz,(MemEvent*)me,true));
     }
   }
   return true;
@@ -365,6 +389,27 @@ MemEventBase* OLB::recv(){
   SimpleNetwork::Request *req = link_control->recv(0);
   if( req != nullptr ){
     // decode the network requests and create a new local request
+		    /*Addr baseAddr = (req->addrs[0]) & baseAddrMask_;
+				CustomCmdEvent * cme = new CustomCmdEvent(Component::getName().c_str(), req->addrs[0], baseAddr, Command::CustomReq, req->getCustomOpc(), req->size);
+				cme->setRqstr(rqstr_);
+				cme->setDst(rqstr_);
+
+				if(req->flags & SimpleMem::Request::F_NONCACHEABLE)
+						cme->setFlag(MemEvent::F_NONCACHEABLE);
+																	    							
+				if (req->data.size() != 0) {
+						cme->setPayload(req->data); // Note this updates cme->size to payload.size()...
+						cme->setSize(req->size);    // Assume this is what we want, not the copied payload size
+				}
+				cme->setVirtualAddress(req->getVirtualAddress());
+				cme->setInstructionPointer(req->getInstructionPointer());
+
+				cme->setMemFlags(req->memFlags);
+																																						    
+				return cme;
+				*/
+				//MemEventBase *me = createCustomEvent(req);
+
   }
   return nullptr;
 }
@@ -378,7 +423,7 @@ void OLB::init(unsigned int in){
 void OLB::setup(void){
 }
 
-void OLD::finish(void){
+void OLB::finish(void){
 }
 
 void OLB::printStatus(Output &out){
@@ -389,7 +434,10 @@ void OLB::emergencyShutdownDebug(Output &out){
 }
 
 unsigned OLB::getTag(){
-  return tagCache.pop_front();
+	unsigned ret = tagCache.front();
+	tagCache.pop_front();
+	return ret;
+  //return tagCache.pop_front();
 }
 
 void OLB::replaceTag(unsigned T){

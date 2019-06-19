@@ -165,6 +165,7 @@ public:
     typedef uint64_t                        uint64;
 
     friend class InstructionStream;
+		friend class OLB;
 
     /** Constructor for Cache Component */
     Cache(ComponentId_t id, Params &params);

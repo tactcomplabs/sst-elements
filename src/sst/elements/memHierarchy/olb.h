@@ -33,23 +33,34 @@
 #include <sst/core/event.h>
 #include <sst/core/sst_types.h>
 #include <sst/core/component.h>
+#include <sst/core/subcomponent.h>
 #include <sst/core/elementinfo.h>
 #include <sst/core/link.h>
 #include <sst/core/timeConverter.h>
 #include <sst/core/output.h>
 #include <sst/core/interfaces/simpleNetwork.h>      // required for network handlers
+#include <sst/core/serialization/serializable.h>
 
 // sst elements headers
-#include "sst/elements/memHierarchy/cache.h"        // required for local caches
+//#include "sst/elements/memHierarchy/cache.h"        // required for local caches
+#include "sst/elements/memHierarchy/cacheController.h"        // required for local caches
 #include "sst/elements/memHierarchy/memNIC.h"       // required for MemNICBase
 #include "sst/elements/memHierarchy/memLinkBase.h"  // required for MemNICBase
 #include "sst/elements/memHierarchy/util.h"
+#include "sst/elements/memHierarchy/memEventBase.h"
+#include "sst/elements/memHierarchy/memEvent.h"
+#include "sst/elements/memHierarchy/customcmd/customCmdEvent.h"
+#include "memHierarchyInterface.h"
+//#include "simpleStatisticsComponent.h"
 
 namespace SST {
 namespace MemHierarchy {
 
-using namespace SST::Interfaces::SimpleNetwork;
+using SST::Interfaces::SimpleNetwork;
 using namespace std;
+using SST::MemHierarchy::CustomCmdEvent;
+using namespace SST::Interfaces;
+//using SST::BaseComponent;
 
 /*
  * Component: memHierarchy.OLB
@@ -77,11 +88,24 @@ public:
     : Tag(T), Dest(D), RqstSz(RS), Event(ME), isLocal(Local) {}
 
   /* Destructor */
-  ~OLBRqst();
+  ~OLBRqst(){}
+	
 
   unsigned getTag() { return Tag; }
   unsigned getDest() { return Dest; }
   unsigned getRqstSz() { return RqstSz; }
+
+
+	public:
+	/*void serialize_order(SST::Core::Serialization::serializer &ser) override {
+		Event::serialize_order(ser);
+		ser & Tag;  
+		ser & RqstSz;
+  }*/
+
+	//ImplementSerializable(SST::MemHierarchy::OLBRqst);
+	NotSerializable(OLBRqst);
+
 
 private:
   unsigned Tag;       // request tag
@@ -126,7 +150,8 @@ public:
 
   // public functions
   /* Constructor */
-  OLB(Component *comp, Params &params);
+  //OLB(Component *comp, Params &params);
+  OLB(ComponentId_t id, Params &params);
 
   /* Destructor */
   ~OLB();
@@ -137,7 +162,7 @@ public:
   bool clock(Cycle_t time);
 
   /* send/recv functions for memory requests */
-  void send(MemEventbase *ev);
+  void send(MemEventBase *ev);
   MemEventBase *recv();
   void processIncomingEvent(SST::Event* ev);  // this needs to be defined
 
@@ -171,10 +196,9 @@ private:
   void registerStatData();
   void createClock(Params &params);
   bool configureLinks( Params &params );
-  void send(MemEventBase *ev);
+  //void send(MemEventBase *ev);
   unsigned getTag();
   void replaceTag(unsigned T);
-
 
   // Internal Config State
   unsigned debug;         // debug output destination
@@ -185,7 +209,7 @@ private:
   bool clockLink;         // determines whether the links need to be clocked
   Output *dbg;            // debug output
 
-  Clock::Handler<Cache>*  clockHandler;
+  Clock::Handler<OLB>*  clockHandler;
   TimeConverter*          defaultTimeBase;
 
   std::map<unsigned,unsigned> LToPMap;  // logical to physical PE mapping
@@ -194,16 +218,21 @@ private:
   MemLinkBase*            linkUp;
   MemLinkBase*            linkDown;
 
+
+	// OLB entries
+	int64_t entries;
+
   // Handlers for the network
   SST::Interfaces::SimpleNetwork *link_control;
 
   // Event Queues
   std::queue<SST::Interfaces::SimpleNetwork::Request*> sendQueue; // events waiting to be sent
   std::queue<OLBRqst*> memQueue;                                  // local memory events waiting to be processed
-  std::vector<<OLBRqst*> netQueue;                                // remote memory requests in flight
+  std::vector<OLBRqst*> netQueue;                                // remote memory requests in flight
 
   // Tag Cache
   std::deque<unsigned> tagCache;                                  // cache of memory tags
+	Cache* local_cache;
 
   // Statistics API values
   Statistic<uint64_t>* statTotalOps;
